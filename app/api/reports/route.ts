@@ -1,0 +1,56 @@
+import { z } from 'zod';
+import { reportInput } from '../../../lib/report-input';
+import { createReport } from '../../../lib/report-store';
+
+export const runtime = 'nodejs';
+
+function json(data: object, status: number) {
+  return Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
+}
+
+export async function POST(request: Request) {
+  const key = z.uuidv4().safeParse(request.headers.get('Idempotency-Key'));
+  if (!key.success) return json({ error: 'INVALID_IDEMPOTENCY_KEY' }, 400);
+  if (request.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/json') {
+    return json({ error: 'UNSUPPORTED_MEDIA_TYPE' }, 415);
+  }
+
+  const reader = request.body?.getReader();
+  if (!reader) return json({ error: 'INVALID_JSON' }, 400);
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  let bytes = 0;
+  let body = '';
+  let payload: unknown;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > 16384) {
+        await reader.cancel();
+        return json({ error: 'PAYLOAD_TOO_LARGE' }, 413);
+      }
+      body += decoder.decode(value, { stream: true });
+    }
+    payload = JSON.parse(body + decoder.decode());
+  } catch {
+    return json({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const input = reportInput.safeParse(payload);
+  if (!input.success) {
+    return json({ error: 'VALIDATION_ERROR', issues: input.error.issues.map(({ path, message }) => ({
+      field: path.join('.'), message,
+    })) }, 422);
+  }
+
+  try {
+    const result = await createReport(key.data.toLowerCase(), input.data);
+    if (result.kind === 'conflict') return json({ error: 'IDEMPOTENCY_CONFLICT' }, 409);
+    if (result.kind === 'invalidWard') return json({ error: 'INVALID_WARD' }, 422);
+    return json(result.receipt, result.replayed ? 200 : 201);
+  } catch {
+    console.error('Report intake failed.');
+    return json({ error: 'INTAKE_UNAVAILABLE' }, 503);
+  }
+}
