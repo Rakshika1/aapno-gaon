@@ -51,3 +51,14 @@ Apply all SQL migrations in filename order. Set `SUPABASE_URL` and `SUPABASE_PUB
 At `/staff`, approve or reject a submission. Approved reports appear in the public register and active queue. Start work before resolving a report, and enter a public resolution note when closing it.
 
 Set `center_latitude` and `center_longitude` on each ward using verified local coordinates to display ward markers. The table works before those coordinates are configured. The overview groups reports by ward and uses ward-center coordinates.
+
+## Verify a build
+
+GitHub Actions builds the Docker image, applies all migrations to a temporary PostgreSQL database, and checks the running app. It verifies that retrying a submission returns the same receipt, creates one report, and keeps the report out of the public register until review. If a run fails, open the failed step and the container log in Actions.
+
+For a manual acceptance check, use a development database and a configured staff account.
+
+1. Submit a sample report with a ward and landmark. Try both allowing and declining location permission. If you share a pin, move it before submitting.
+2. Open the private receipt and confirm the report is waiting for review. Search for its ticket in the public register and confirm it has no result.
+3. Sign in as staff, approve the report, start work, and resolve it with a note. Confirm the public register and private receipt reflect the status.
+4. Open the ward overview and verify that resolving the report decreases the pending count and increases the resolved count under the same filters.

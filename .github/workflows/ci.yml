@@ -62,6 +62,18 @@ jobs:
           count=$(docker run --rm --network host -e DATABASE_URL postgres:17-alpine \
             sh -c 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "select count(*) from mysociety.reports"')
           test "$count" = 1
+      - name: Check report tracking and public visibility
+        run: |
+          base=http://127.0.0.1:3000
+          ticket=$(jq -er .ticketCode /tmp/receipt.json)
+          receipt=$(jq -er .receiptUrl /tmp/receipt.json)
+          curl -fsS "$base$receipt" -o /tmp/tracking.html
+          grep -Fq "$ticket" /tmp/tracking.html
+          grep -Fq 'Waiting for staff review' /tmp/tracking.html
+          curl -fsS --get --data-urlencode "q=$ticket" "$base/register" -o /tmp/register.html
+          grep -Fq 'No approved reports match these filters' /tmp/register.html
+          curl -fsS "$base/staff" -o /tmp/staff.html
+          grep -Fq 'Staff sign-in' /tmp/staff.html
       - name: Collect container logs
         if: failure()
         run: docker logs mysociety-ci 2>/dev/null || true
