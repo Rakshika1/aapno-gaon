@@ -20,7 +20,7 @@ export default function Home() {
               <li><strong>Follow the update.</strong> See when staff pick up and resolve the issue.</li>
             </ol>
             <Divider my="lg" />
-            <Text size="sm">Reporting opens after the submission flow is connected.</Text>
+            <nav className="home-links" aria-label="Reports"><a href="/report">Report an issue</a><a href="/register">Browse reports</a></nav>
           </Paper>
         </Container>
       </main>

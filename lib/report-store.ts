@@ -84,3 +84,44 @@ export async function createReport(key: string, input: ReportInput) {
     client.release();
   }
 }
+
+function readPool() {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) throw new Error('Database is not configured.');
+  pool ??= new Pool({ connectionString, max: 3, connectionTimeoutMillis: 3000 });
+  return pool;
+}
+
+export async function getWards() {
+  const { rows } = await readPool().query<{ id: number; name: string }>(
+    'select id, name from mysociety.wards where active order by id',
+  );
+  return rows;
+}
+
+export async function getReceipt(token: string) {
+  const { rows } = await readPool().query<{ ticket_code: string; status: string; visibility: string }>(
+    'select ticket_code, status, visibility from mysociety.reports where receipt_token_hash = $1',
+    [sha256(token)],
+  );
+  return rows[0];
+}
+
+export async function getPublicReports(q: string, ward: string, status: string, category: string, before?: string) {
+  const { rows } = await readPool().query<{
+    ticket_code: string; ward: string; category: string; description: string; status: string;
+  }>(
+    `select r.ticket_code, w.name as ward, r.category, r.description, r.status
+     from mysociety.reports r join mysociety.wards w on w.id = r.ward_id
+     where r.visibility = 'APPROVED'
+       and ($1 = '' or strpos(lower(r.description || ' ' || r.ticket_code), lower($1)) > 0)
+       and ($2 = '' or w.id::text = $2)
+       and ($3 = '' or r.status = $3)
+       and ($4 = '' or r.category = $4)
+       and ($5 = '' or (r.created_at, r.id) < (
+         select created_at, id from mysociety.reports where ticket_code = $5 and visibility = 'APPROVED'
+       ))
+     order by r.created_at desc, r.id desc limit 51`, [q, ward, status, category, before ?? ''],
+  );
+  return rows;
+}

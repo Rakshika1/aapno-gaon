@@ -10,3 +10,16 @@ body { background: #f3f4ec; color: #18362b; }
 .guide ol { padding-left: 1.35rem; }
 .guide li + li { margin-top: .85rem; }
 @media (max-width: 48em) { .landing { grid-template-columns: 1fr; min-height: auto; } }
+
+.content { max-width: 46rem; margin: auto; padding: 2rem 1.5rem 4rem; }
+.content a, .home-links a { color: #245738; font-weight: 700; }
+.home-links { display: flex; flex-wrap: wrap; gap: 1rem; }
+.report-form { display: grid; gap: 1rem; }
+.report-form label { display: grid; gap: .35rem; font-weight: 600; }
+.report-form :is(input, select, textarea, button) { padding: .65rem; border: 1px solid #789181; border-radius: .45rem; font: inherit; }
+.report-form button { background: #245738; color: white; cursor: pointer; }
+.report-form button:disabled { opacity: .7; cursor: wait; }
+.register-list { padding: 0; list-style: none; }
+.register-list li { padding: 1rem 0; border-bottom: 1px solid #d4dfd5; overflow-wrap: anywhere; }
+.report-form fieldset > button + button { margin-left: .5rem; }
+.pin-map { height: 20rem; margin-block: .75rem; border: 1px solid #789181; border-radius: .45rem; }

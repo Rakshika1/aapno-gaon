@@ -25,7 +25,7 @@ curl -i http://localhost:3000/api/reports \
   -d '{"wardId":1,"category":"streetlights","landmark":"Near the bus stop","description":"The streetlight is out."}'
 ```
 
-The first request returns HTTP 201 and a ticket. Repeat the same command with the same key and payload within 24 hours to get HTTP 200 and the same receipt. Reusing the key for different data or after the 24-hour replay window returns HTTP 409. Optional `location` has `latitude`, `longitude`, `source` (`device` or `manual`), and optional device `accuracyM`. The API generates a private receipt URL. The tracking page is still under development. Public access to report details and production traffic controls are planned before deployment.
+The first request returns HTTP 201 and a ticket. Repeat the same command with the same key and payload within 24 hours to get HTTP 200 and the same receipt. Reusing the key for different data or after the 24-hour replay window returns HTTP 409. Optional `location` has `latitude`, `longitude`, `source` (`device` or `manual`), and optional device `accuracyM`. Open the receipt URL to track the report. Use /report to submit through the website and /register to browse approved reports. Staff moderation and production traffic controls are planned before deployment.
 
 ## Docker
 
@@ -42,4 +42,4 @@ Live Vercel URL will be added after deployment.
 
 ## Contributing
 
-Open a pull request from a task branch. Have another team member review the change and check that CI passes before merging.
+Check that CI passes before merging changes.
