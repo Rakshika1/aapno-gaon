@@ -25,7 +25,7 @@ curl -i http://localhost:3000/api/reports \
   -d '{"wardId":1,"category":"streetlights","landmark":"Near the bus stop","description":"The streetlight is out."}'
 ```
 
-The first request returns HTTP 201 and a ticket. Repeat the same command with the same key and payload within 24 hours to get HTTP 200 and the same receipt. Reusing the key for different data or after the 24-hour replay window returns HTTP 409. Optional `location` has `latitude`, `longitude`, `source` (`device` or `manual`), and optional device `accuracyM`. Open the receipt URL to track the report. Use /report to submit through the website and /register to browse approved reports. Staff moderation and production traffic controls are planned before deployment.
+The first request returns HTTP 201 and a ticket. Repeat the same command with the same key and payload within 24 hours to get HTTP 200 and the same receipt. Reusing the key for different data or after the 24-hour replay window returns HTTP 409. Optional `location` has `latitude`, `longitude`, `source` (`device` or `manual`), and optional device `accuracyM`. Open the receipt URL to track the report. Use /report to submit through the website and /register to browse approved reports. Staff review is available at /staff. Ward summaries are available at /overview.
 
 ## Docker
 
@@ -43,3 +43,11 @@ Live Vercel URL will be added after deployment.
 ## Contributing
 
 Check that CI passes before merging changes.
+
+## Staff review and ward overview
+
+Apply all SQL migrations in filename order. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`, create or invite a staff user in Supabase Auth, and insert that user's UUID in `mysociety.staff_members`. Only listed users can use the queue. Sign in again when the access token expires.
+
+At `/staff`, approve or reject a submission. Approved reports appear in the public register and active queue. Start work before resolving a report, and enter a public resolution note when closing it.
+
+Set `center_latitude` and `center_longitude` on each ward using verified local coordinates to display ward markers. The table works before those coordinates are configured. The overview groups reports by ward and uses ward-center coordinates.

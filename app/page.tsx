@@ -20,7 +20,7 @@ export default function Home() {
               <li><strong>Follow the update.</strong> See when staff pick up and resolve the issue.</li>
             </ol>
             <Divider my="lg" />
-            <nav className="home-links" aria-label="Reports"><a href="/report">Report an issue</a><a href="/register">Browse reports</a></nav>
+            <nav className="home-links" aria-label="Reports"><a href="/report">Report an issue</a><a href="/register">Browse reports</a><a href="/overview">Ward overview</a><a href="/staff">Staff sign-in</a></nav>
           </Paper>
         </Container>
       </main>

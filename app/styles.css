@@ -23,3 +23,7 @@ body { background: #f3f4ec; color: #18362b; }
 .register-list li { padding: 1rem 0; border-bottom: 1px solid #d4dfd5; overflow-wrap: anywhere; }
 .report-form fieldset > button + button { margin-left: .5rem; }
 .pin-map { height: 20rem; margin-block: .75rem; border: 1px solid #789181; border-radius: .45rem; }
+.overview-table { overflow-x: auto; }
+.overview-table table { width: 100%; border-collapse: collapse; text-align: left; }
+.overview-table :is(td, th) { border-bottom: 1px solid #d4dfd5; padding: .5rem; }
+.ward-marker { border-radius: 999px; color: white; padding: .35rem .55rem; font-weight: 700; }

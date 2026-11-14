@@ -85,7 +85,7 @@ export async function createReport(key: string, input: ReportInput) {
   }
 }
 
-function readPool() {
+export function readPool() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new Error('Database is not configured.');
   pool ??= new Pool({ connectionString, max: 3, connectionTimeoutMillis: 3000 });

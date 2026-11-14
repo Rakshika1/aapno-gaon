@@ -1,0 +1,72 @@
+'use server';
+
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { z } from 'zod';
+import { authRequest, getStaff, sessionCookie } from '../../lib/staff-auth';
+import { readPool } from '../../lib/report-store';
+
+export async function signIn(form: FormData) {
+  const input = z.object({ email: z.email().max(254), password: z.string().min(1).max(256) })
+    .safeParse({ email: form.get('email'), password: form.get('password') });
+  if (!input.success) redirect('/staff?error=login');
+  const session = z.object({ access_token: z.string(), expires_in: z.number().int().positive(), user: z.object({ id: z.uuid() }) })
+    .safeParse(await authRequest('token?grant_type=password', {
+      method: 'POST', body: JSON.stringify(input.data),
+    }).catch(() => null));
+  if (!session.success) redirect('/staff?error=login');
+  const { rowCount } = await readPool().query(
+    'select 1 from mysociety.staff_members where user_id = $1', [session.data.user.id],
+  );
+  if (!rowCount) redirect('/staff?error=login');
+  (await cookies()).set(sessionCookie, session.data.access_token, {
+    httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/',
+    maxAge: session.data.expires_in,
+  });
+  redirect('/staff');
+}
+
+export async function signOut() {
+  (await cookies()).delete(sessionCookie);
+  redirect('/staff');
+}
+
+const change = z.object({
+  id: z.uuid(), version: z.coerce.number().int().positive().max(2147483647),
+  operation: z.enum(['approve', 'reject', 'start', 'resolve']), note: z.string().trim().max(500),
+});
+
+export async function updateReport(form: FormData) {
+  const staff = await getStaff();
+  if (!staff) redirect('/staff');
+  const input = change.safeParse(Object.fromEntries(["id", "version", "operation", "note"].map(key => [key, form.get(key) ?? ""])));
+  if (!input.success || (input.data.operation === 'resolve' && !input.data.note)) {
+    redirect('/staff?error=invalid');
+  }
+  const { id, version, operation, note } = input.data;
+  const { rowCount } = await readPool().query(
+    `with eligible as (
+       select id, status, visibility from mysociety.reports
+       where id = $1 and version = $2
+         and exists (select 1 from mysociety.staff_members where user_id = $3)
+         and case $4
+           when 'approve' then visibility = 'PENDING_REVIEW'
+           when 'reject' then visibility = 'PENDING_REVIEW'
+           when 'start' then visibility = 'APPROVED' and status = 'SUBMITTED'
+           when 'resolve' then visibility = 'APPROVED' and status = 'IN_PROGRESS'
+         end
+       for update
+     ), changed as (
+       update mysociety.reports r set
+         status = case $4 when 'start' then 'IN_PROGRESS' when 'resolve' then 'RESOLVED' else e.status end,
+         visibility = case $4 when 'approve' then 'APPROVED' when 'reject' then 'REJECTED' else e.visibility end,
+         version = r.version + 1, updated_at = now()
+       from eligible e where r.id = e.id
+       returning r.id, e.status as old_status, r.status
+     )
+     insert into mysociety.report_events (report_id, actor_id, event_type, old_status, new_status, note)
+     select id, $3, upper($4), old_status, status, case when $4 = 'resolve' then $5 else null end from changed`,
+    [id, version, staff, operation, note],
+  );
+  redirect('/staff' + (rowCount ? '?saved=1' : '?error=conflict'));
+}

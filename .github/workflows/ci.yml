@@ -33,7 +33,7 @@ jobs:
       - name: Apply schema and seed test wards
         run: |
           docker run --rm --network host -e DATABASE_URL -v "$PWD/supabase:/sql:ro" postgres:17-alpine \
-            sh -c 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f /sql/migrations/202611140001_report_intake.sql -f /sql/seed.sql'
+            sh -c 'for migration in /sql/migrations/*.sql; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration" || exit; done; psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f /sql/seed.sql'
       - name: Check the running container
         run: |
           docker run --detach --name mysociety-ci --network host -e HOSTNAME=127.0.0.1 \
