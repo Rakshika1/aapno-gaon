@@ -11,6 +11,16 @@ jobs:
   build-and-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:ci-only-password@127.0.0.1:5432/postgres
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,9 +30,14 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: docker build -t mysociety:ci .
+      - name: Apply schema and seed test wards
+        run: |
+          docker run --rm --network host -e DATABASE_URL -v "$PWD/supabase:/sql:ro" postgres:17-alpine \
+            sh -c 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f /sql/migrations/202611140001_report_intake.sql -f /sql/seed.sql'
       - name: Check the running container
         run: |
-          docker run --detach --name mysociety-ci -p 127.0.0.1:3000:3000 mysociety:ci
+          docker run --detach --name mysociety-ci --network host -e HOSTNAME=127.0.0.1 \
+            -e DATABASE_URL -e RECEIPT_SECRET="$(openssl rand -hex 32)" mysociety:ci
           for attempt in {1..20}; do
             if curl -fsS http://localhost:3000/api/health > /tmp/mysociety-health.json; then
               jq -e '.status == "ok" and .service == "mysociety"' /tmp/mysociety-health.json
@@ -32,6 +47,21 @@ jobs:
             sleep 2
           done
           exit 1
+      - name: Verify report submission and retry
+        run: |
+          key=$(node -p 'crypto.randomUUID()')
+          body='{"wardId":1,"category":"roads","landmark":"Bus stop","description":"Pothole"}'
+          submit() {
+            curl -fsS -o "$1" -w '%{http_code}' http://127.0.0.1:3000/api/reports \
+              -H "Idempotency-Key: $key" -H 'Content-Type: application/json' --data "$body"
+          }
+          test "$(submit /tmp/receipt.json)" = 201
+          test "$(submit /tmp/replay.json)" = 200
+          jq -e '.status == "SUBMITTED" and (.ticketCode | startswith("MS-")) and (.receiptUrl | startswith("/track/"))' /tmp/receipt.json
+          diff -u <(jq -S . /tmp/receipt.json) <(jq -S . /tmp/replay.json)
+          count=$(docker run --rm --network host -e DATABASE_URL postgres:17-alpine \
+            sh -c 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "select count(*) from mysociety.reports"')
+          test "$count" = 1
       - name: Collect container logs
         if: failure()
         run: docker logs mysociety-ci 2>/dev/null || true
