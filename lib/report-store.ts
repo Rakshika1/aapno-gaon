@@ -1,0 +1,86 @@
+import { createHash, createHmac, randomBytes } from 'node:crypto';
+import { Pool } from 'pg';
+import type { ReportInput } from './report-input';
+
+let pool: Pool | undefined;
+
+function sha256(value: string) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+export async function createReport(key: string, input: ReportInput) {
+  const connectionString = process.env.DATABASE_URL;
+  const secret = process.env.RECEIPT_SECRET;
+  if (!connectionString || !secret || Buffer.byteLength(secret) < 32) {
+    throw new Error('Report intake configuration is missing.');
+  }
+
+  const location = input.location ?? null;
+  const requestHash = sha256(JSON.stringify({
+    wardId: input.wardId,
+    category: input.category,
+    landmark: input.landmark,
+    description: input.description,
+    location: location && { ...location, accuracyM: location.accuracyM ?? null },
+  }));
+  pool ??= new Pool({ connectionString, max: 3, connectionTimeoutMillis: 3000 });
+  const client = await pool.connect();
+
+  try {
+    await client.query('begin');
+    // Serialize retries for a key before looking up or creating its report.
+    await client.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [key]);
+    const existing = await client.query<{ ticket_code: string; request_hash: string; expired: boolean }>(
+      `select r.ticket_code, k.request_hash, k.expires_at <= now() as expired
+       from mysociety.submission_keys k join mysociety.reports r on r.id = k.report_id
+       where k.key = $1`, [key],
+    );
+    const previous = existing.rows[0];
+    if (previous && (previous.expired || previous.request_hash !== requestHash)) {
+      await client.query('rollback');
+      return { kind: 'conflict' } as const;
+    }
+
+    const ticketCode = previous?.ticket_code ?? `MS-${randomBytes(9).toString('hex').toUpperCase()}`;
+    const token = createHmac('sha256', secret).update(`receipt:${key}:${ticketCode}`).digest('base64url');
+
+    if (!previous) {
+      const inserted = await client.query<{ id: string }>(
+        `insert into mysociety.reports
+           (ticket_code, receipt_token_hash, ward_id, category, landmark, description,
+            latitude, longitude, accuracy_m, pin_source)
+         select $1, $2, id, $4, $5, $6, $7, $8, $9, $10
+         from mysociety.wards where id = $3 and active for share
+         returning id`,
+        [ticketCode, sha256(token), input.wardId, input.category, input.landmark, input.description,
+          location?.latitude, location?.longitude, location?.accuracyM, location?.source],
+      );
+      const report = inserted.rows[0];
+      if (!report) {
+        await client.query('rollback');
+        return { kind: 'invalidWard' } as const;
+      }
+
+      await client.query(
+        `insert into mysociety.report_events (report_id, event_type, new_status)
+         values ($1, 'REPORT_CREATED', 'SUBMITTED')`, [report.id],
+      );
+      await client.query(
+        `insert into mysociety.submission_keys (key, request_hash, report_id, expires_at)
+         values ($1, $2, $3, now() + interval '24 hours')`, [key, requestHash, report.id],
+      );
+    }
+
+    await client.query('commit');
+    return {
+      kind: 'accepted',
+      replayed: Boolean(previous),
+      receipt: { ticketCode, status: 'SUBMITTED', receiptUrl: `/track/${token}` },
+    } as const;
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
