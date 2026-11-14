@@ -1,0 +1,37 @@
+name: Build and smoke check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: docker build -t mysociety:ci .
+      - name: Check the running container
+        run: |
+          docker run --detach --name mysociety-ci -p 127.0.0.1:3000:3000 mysociety:ci
+          for attempt in {1..20}; do
+            if curl -fsS http://localhost:3000/api/health > /tmp/mysociety-health.json; then
+              jq -e '.status == "ok" and .service == "mysociety"' /tmp/mysociety-health.json
+              curl -fsS http://localhost:3000/ | grep -o 'mySociety' > /dev/null
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+      - name: Collect container logs
+        if: failure()
+        run: docker logs mysociety-ci 2>/dev/null || true
